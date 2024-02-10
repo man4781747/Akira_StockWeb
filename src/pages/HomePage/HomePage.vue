@@ -1,8 +1,8 @@
 <template>
   <div class="">
-  {{ totalWidthPiexl }}
+    {{ fiveLine__dataStart }}
     <div id="chart"></div>
-
+    {{ chosedData }}
   </div>
 </template>
 
@@ -20,14 +20,21 @@ export default {
     nowX: 40,  // 整體圖片的x平移量
     nowY: 30,  // 整體圖片的x平移量
     total_height: 800,
-    total_width: 800,
+    total_width: 1200,
     x_padding: 7, //單位: 天
     x_oneDayPixel: 10, // 1天占用多少piexl
+    xLableMaxNumOnWindow: 6,
     y_onePricePixel: 1, // 1元占多少Pixel
     x_scale: 1.,
     y_axis_width: 40,
     x_axis_height: 30,
-    Svg: undefined
+    Svg: undefined,
+    lastTargetMoneyBarID: "" ,
+    chosedData: {},
+
+    //! 五線譜相關資訊
+    fiveLine__dataLen: Math.floor(365*2/7*5),
+    fiveLine__dataStart: 0,
   }
   },
   computed:{
@@ -65,6 +72,45 @@ export default {
     totalHeightPiexl() {
       return Math.abs(this.MaxPrice*1.1)*this.y_onePricePixel
     },
+    XAxisLabelNum() {
+      //! 為保持x軸文字不會過於壅擠，動態計算畫面中的x軸區分塊數
+      let oneXLabelPixel = this.total_width/this.xLableMaxNumOnWindow //滿足最大x軸區分不再畫面上超過指定數量對應的pixel數
+      return Math.floor(this.totalWidthPiexl/oneXLabelPixel)
+    },
+
+    //! 五線譜相關
+    fiveLine__dataList () {
+      var returnList = []
+      for (let i in [...Array(this.fiveLine__dataLen).keys()]) {
+        returnList.push(this.L_allData[this.fiveLine__dataStart - i])
+      }
+      return returnList
+    },
+    fiveLine__mean () {
+      return d3.mean(this.fiveLine__dataList.map((x) => x.close))
+    },
+    fiveLine__deviation () {
+      return d3.deviation(this.fiveLine__dataList.map((x) => x.close))
+    },
+
+    fiveLine__plotData () {
+      var returnData = []
+      var lastInde = this.fiveLine__dataList.length-1
+      for (let i of [-2,-1,0,1,2]) {
+        returnData.push({
+          "y1": this.fiveLine__dataList[0]["close"] + i*this.fiveLine__deviation,
+          "x1": this.fiveLine__dataList[0]["date"],
+          "y2": this.fiveLine__dataList[lastInde]["close"] + i*this.fiveLine__deviation,
+          "x2": this.fiveLine__dataList[lastInde]["date"],
+        })
+      }
+      returnData[4]["color"] = "rgba(255,0,0, 0.3)"
+      returnData[3]["color"] = "rgba(125,67,0, 0.3)"
+      returnData[2]["color"] = "rgba(125,125,125, 0.3)"
+      returnData[1]["color"] = "rgba(67,125,0, 0.3)"
+      returnData[0]["color"] = "rgba(0,255,0, 0.3)"
+      return returnData
+    }
     // xScale() {
     //   return d3.scaleLinear()
     //   .domain([d3.min(this.L_allData.map((x) => x.low)), d3.max(this.L_allData.map((x) => x.high))])
@@ -157,7 +203,7 @@ export default {
     },
     createYAxisEventBK(){
       var bk_y = this.Svg.append('g').attr("id","event-y-bk-canvas").style('z-index', '99999')
-      bk_y.append('rect').attr('width', this.y_axis_width).attr('height', this.total_height-this.x_axis_height).attr('x', 0).attr('y', 0).attr('fill', 'green')
+      bk_y.append('rect').attr('width', this.y_axis_width).attr('height', this.total_height-this.x_axis_height).attr('x', 0).attr('y', 0).attr('fill', '#F5F5F5')
       var DragEle = null
       var LastPosition;
       var This = this
@@ -179,7 +225,7 @@ export default {
 
     createXAxisEventBK(){
       var bk_x = this.Svg.append('g').attr("id","event-x-bk-canvas").style('z-index', '99999')
-      bk_x.append('rect').attr('width', this.total_width).attr('height', this.x_axis_height).attr('x', 0).attr('y', this.total_height-this.x_axis_height).attr('fill', 'red')
+      bk_x.append('rect').attr('width', this.total_width).attr('height', this.x_axis_height).attr('x', 0).attr('y', this.total_height-this.x_axis_height).attr('fill', '#F5F5F5')
       .attr('draggable', true)
       var DragEle = null
       var LastPosition;
@@ -195,31 +241,65 @@ export default {
 
     createLineAreaEventBK(){
       var bk_line = this.Svg.append('g').attr("id","event-line-bk-canvas").style('z-index', '99999')
-      bk_line.append('rect').attr('width', this.total_width-this.y_axis_width).attr('height', this.total_height-this.x_axis_height).attr('x', this.y_axis_width).attr('y', 0).attr('fill', 'yellow')
+      bk_line.append('rect').attr('width', this.total_width-this.y_axis_width).attr('height', this.total_height-this.x_axis_height).attr('x', this.y_axis_width).attr('y', 0).attr('fill', 'rgba(0,0,0,0.1')
       var DragEle = null
       var LastPosition_X;
       var LastPosition_Y;
       var This = this
+
+      var date_bk_area = this.Svg.append('g')
+      date_bk_area.append('rect').attr("id","date-bk-area")
+        .attr('width', this.x_oneDayPixel).attr('height', this.total_height-this.x_axis_height).attr('x', this.y_axis_width).attr('y', 0).attr('fill', 'rgba(0,0,0,0.1')
+        .attr("class","unselect")
+        // .style("display","none")
+      var date_bk_area_ele = document.getElementById("date-bk-area")
       document.getElementById("event-line-bk-canvas").addEventListener("wheel", (e)=>this.XAxisEvent__ZoomOnX(e.clientX, e.deltaY/100.))
-      document.getElementById("event-line-bk-canvas").addEventListener("mousedown", (e)=> {DragEle = e.target;LastPosition_X=e.clientX;LastPosition_Y=e.clientY})
+      document.getElementById("event-line-bk-canvas").addEventListener("mousedown", (e)=> {
+        DragEle = e.target
+        LastPosition_X=e.clientX;LastPosition_Y=e.clientY
+        date_bk_area.style("display", "none")
+      })
       document.getElementById("event-line-bk-canvas").addEventListener("mousemove", (e)=> {
         if (DragEle) {
           This.XAxisEvent__HorizontalDisplacement(e.clientX-LastPosition_X);LastPosition_X=e.clientX
           This.YAxisEvent__VerticalDisplacement(-e.clientY+LastPosition_Y);LastPosition_Y=e.clientY
         }
+        let selectDate_AfterShift = This.getXYValueInSvg(e.clientX, e.clientY)[0].addHours(12)
+        var targetID = "mb-"+selectDate_AfterShift.format("Y-MM-dd")
+        if (This.lastTargetMoneyBarID !== targetID) {
+          let lastRargetEle = document.getElementById(This.lastTargetMoneyBarID)
+          if (lastRargetEle) {
+            lastRargetEle.setAttribute("stroke-width",  This.x_oneDayPixel*0.5)
+          }
+          let targetEle = document.getElementById(targetID)
+          if (targetEle) {
+            targetEle.setAttribute("stroke-width",  This.x_oneDayPixel*0.7)
+            window.tt =targetEle
+            This.chosedData = This.L_allData[parseInt(targetEle.getAttribute("data-index"))]
+            
+
+          }
+          This.lastTargetMoneyBarID = targetID
+          date_bk_area_ele.setAttribute("x",  e.clientX)
+        }
       })
-      document.getElementById("event-line-bk-canvas").addEventListener("mouseup", (e)=> {DragEle = null})
-      document.getElementById("event-line-bk-canvas").addEventListener("mouseleave", (e)=> {DragEle = null})
+      document.getElementById("event-line-bk-canvas").addEventListener("mouseup", (e)=> {
+        DragEle = null
+        date_bk_area.style("display", "unset")
+      })
+      document.getElementById("event-line-bk-canvas").addEventListener("mouseleave", (e)=> {
+        DragEle = null
+        date_bk_area.style("display", "unset")
+      })
       // this.Svg.append('g').attr("id","line-canvas")
         // .attr('transform', 'translate('+this.nowX+', '+this.x_axis_height+')')
     },
 
     XAxisEvent__ZoomOnX(xPosition, dZoom){
-      console.log(dZoom)
       let BeforeDate = this.getXTimeInSvg(xPosition, 0) //! 獲得縮放前，滑鼠位置的時間錨定點
       this.x_oneDayPixel += dZoom
-      if (this.x_oneDayPixel < 5) {this.x_oneDayPixel=5}
-      this.refleshXAxis()
+      if (this.x_oneDayPixel < 1) {this.x_oneDayPixel=1}
+      this.reflashXAxis()
       let AfterDate = this.getXTimeInSvg(xPosition, 0) //! 獲得縮放前，滑鼠位置的時間錨定點
       let shift_1 = map_range(
         BeforeDate.getTime(),
@@ -231,13 +311,20 @@ export default {
         this.MaxDate.getTime(), this.MinDate.getTime(),
         0, this.totalWidthPiexl
       )
-      this.refleshLinePath()
+      this.reflashLinePath()
+      this.fiveLine__reflash()
       this.XAxisEvent__HorizontalDisplacement(shift_1-shift_2)
     },
     XAxisEvent__HorizontalDisplacement(dX){
       this.nowX += dX
+      if (this.nowX < -10) {
+        this.nowX = -10
+      } else if (this.nowX > this.totalWidthPiexl + 10 - this.total_width + this.y_axis_width) {
+        this.nowX = this.totalWidthPiexl + 10 - this.total_width + this.y_axis_width
+      }
       document.getElementById("axis-x").attributes.transform.value='translate('+this.nowX+', '+(this.total_height-this.x_axis_height)+')'
       document.getElementById("line-canvas").attributes.transform.value='translate('+this.nowX+', '+this.nowY+')'
+      document.getElementById("five-line").attributes.transform.value='translate('+this.nowX+', '+(this.nowY)+')'
     },
 
     YAxisEvent__VerticalDisplacement(dY){
@@ -255,13 +342,19 @@ export default {
       if (lineElement) {
         lineElement.attributes.transform.value='translate('+this.nowX+', '+this.nowY+')'
       }
+
+      let fiveLineElement = document.getElementById("five-lines")
+      if (fiveLineElement) {
+        fiveLineElement.attributes.transform.value='translate('+this.nowX+', '+this.nowY+')'
+      }
     },
 
-    refleshXAxis(){
+    reflashXAxis(){
       this.xScale = d3.scaleTime()
       .domain([this.MinDate, this.MaxDate])  // x軸頭與尾
       .range([-this.totalWidthPiexl+this.total_width, this.total_width]) // x軸頭尾的實際x值
-      this.xAxis = d3.axisBottom(this.xScale).ticks(this.DiffDays/this.x_padding) 
+      // this.xAxis = d3.axisBottom(this.xScale).ticks(this.DiffDays/this.x_padding) 
+      this.xAxis = d3.axisBottom(this.xScale).ticks(this.XAxisLabelNum) 
       if (document.getElementById("axis-x")) {
         document.getElementById("axis-x").remove()
         this.Svg.append('g').call(this.xAxis).attr("id","axis-x")
@@ -280,7 +373,7 @@ export default {
         .style('user-select', 'none').style('pointer-events', 'none')
       }
     },
-    refleshYAxis(){
+    reflashYAxis(){
       this.yScale = d3.scaleLinear()
         .domain([this.MaxPrice*1.1, 0])
         .range([-this.totalHeightPiexl+this.total_height-this.x_axis_height*2, this.total_height-this.x_axis_height*2])
@@ -308,24 +401,76 @@ export default {
       //     .attr('transform', 'translate('+this.y_axis_width+', '+this.nowY+')')
       //     .style('user-select', 'none').style('pointer-events', 'none')
     },
-    refleshLinePath() {
+    reflashLinePath() {
       if (document.getElementById("line-canvas") !== null) {
-        // console.log(123)
-        // document.getElementById("line-canvas").remove()
         for (let child of document.getElementById("line-canvas").childNodes) {
           child.remove()
         }
         this.Svg.select("#line-canvas").attr('transform', 'translate('+this.nowX+', '+this.x_axis_height+')')
-        this.Svg.select("#line-canvas").append('path')
-        .datum(this.L_allData)
-        .attr('fill', 'none')
-        .attr('stroke', 'red')
-        .attr('stroke-width', 1)
-        .attr('d', d3.line().x((v, i) => {
-            return this.xScale(new Date(v["date"]))
-        }).y((v, i) => {
-            return this.yScale(v["high"])
-        }))
+
+        // var targetCanvas = this.Svg.select("#line-canvas")
+        // console.log(this.L_allData)
+        const g = this.Svg.select("#line-canvas").append("g")
+          .attr("stroke-linecap", "round")
+          .attr("stroke", "black")
+        .selectAll("g")
+        .data(this.L_allData)
+        .join("g")
+
+        g.append("line")
+          .attr("y1", d => this.yScale(d.low))
+          .attr("y2", d => this.yScale(d.high))
+          .attr("x1", d => this.xScale(new Date(d.date)))
+          .attr("x2", d => this.xScale(new Date(d.date)))
+          .attr("class","unselect")
+
+        // g.append("line")
+        //   .attr("y1", this.yScale( this.fiveLine__dataList[0]["close"]))
+        //   .attr("x1", this.xScale( new Date(this.fiveLine__dataList[0]["date"]) ))
+        //   .attr("y2", this.yScale( this.fiveLine__dataList[this.fiveLine__dataList.length-1]["close"]))
+        //   .attr("x2", this.xScale( new Date(this.fiveLine__dataList[this.fiveLine__dataList.length-1]["date"]) ))
+
+        // for (let dataChose of this.L_allData) {
+        //   g.append("line")
+        //     .attr("y1", this.yScale(dataChose.open))
+        //     .attr("y2", this.yScale(dataChose.close))
+        //     .attr("x1", this.xScale(new Date(dataChose.date)))
+        //     .attr("x2", this.xScale(new Date(dataChose.date)))
+        //     .attr("stroke-width", this.x_oneDayPixel*0.5)
+        //     // .attr("stroke", dataChose.open > dataChose.close ? d3.schemeSet1[0]
+        //     //   : dataChose.close > dataChose.open ? d3.schemeSet1[2]
+        //     //   : d3.schemeSet1[8]);
+        // }
+
+        g.append("line")
+          .attr("id", d => ("mb-"+d.date).split(" ")[0])
+          .attr("data-index", d => d.index)
+          .attr("date", d => d.date)
+          .attr("y1", d => this.yScale(d.open))
+          .attr("y2", d => this.yScale(d.close))
+          .attr("x1", d => this.xScale(new Date(d.date)))
+          .attr("x2", d => this.xScale(new Date(d.date)))
+          .attr("stroke-width", this.x_oneDayPixel*0.5)
+          .attr("stroke", d => d.open > d.close ? d3.schemeSet1[0]
+            : d.close > d.open ? d3.schemeSet1[2]
+            : d3.schemeSet1[8])
+          .attr("class","unselect")
+        // var This = this
+        // d3.selectAll('.money-bar').on('mouseover', function () {
+        //   let pt = d3.pointer(event, This.Svg.node())
+        //   This.Svg.append("text").attr('id', 'detail-msg').attr('x', pt[0]).attr('y', pt[1]).text(`X：${parseInt(pt[0])} | Y：${parseInt(pt[1])}`)
+        //   // console.log(This.Svg.node())
+        //   event.target.setAttribute("stroke-width",  This.x_oneDayPixel*0.7)
+        //   console.log(event.target.getAttribute("date"))
+        //   window.tt = event.target
+        // })
+        // d3.selectAll('.money-bar').on('mouseleave', function () {
+        //   // let pt = d3.pointer(event, This.Svg.node())
+        //   // console.log(This.Svg.node())
+        //   document.getElementById("detail-msg").remove()
+        //   event.target.setAttribute("stroke-width",  This.x_oneDayPixel*0.5)
+        // })
+        document.getElementById("date-bk-area").setAttribute("width",  this.x_oneDayPixel)
       }
       else {
         this.Svg.append('g').attr("id","line-canvas")
@@ -354,198 +499,64 @@ export default {
       var test  = (this.getXYPointInSvg(new Date(), this.MeanPrice))[1]-this.total_height/2.
       this.YAxisEvent__VerticalDisplacement(-test)
     },
+
+    //! 五線譜相關
+    fiveLine__reflash() {
+      if (document.getElementById("five-line")) {
+        for (let child of document.getElementById("five-line").childNodes) {
+          child.remove()
+        }
+        this.Svg.select("#five-line").attr('transform', 'translate('+this.nowX+', '+this.x_axis_height+')')
+        const g = this.Svg.select("#five-line").append("g")
+          .attr("stroke-linecap", "round")
+          .attr("stroke", "black")
+        .selectAll("g")
+        .data(this.fiveLine__plotData)
+        .join("g")
+
+        g.append("line")
+          .attr("y1", d => this.yScale(d.y1))
+          .attr("y2", d => this.yScale(d.y2))
+          .attr("x1", d => this.xScale(new Date(d.x1)))
+          .attr("x2", d => this.xScale(new Date(d.x2)))
+          .attr("class","unselect")
+          .attr("stroke",d => d.color)
+          .attr("stroke-width", 3)
+
+
+      } else {
+        this.Svg.append('g').attr("id","five-line")
+      }
+    }
   },
   mounted(){
     window.test = this
     var This = this
     this.L_allData = Testdata
+    for (let dataChose in this.L_allData) {
+      this.L_allData[dataChose]["index"] = dataChose
+    }
+    this.fiveLine__dataStart = this.L_allData.length -1
     this.y_onePricePixel = (this.total_height-this.x_axis_height)/((this.MaxPrice - this.MinPrice)*1.2)*1.5
     this.INIT__mainSvg()
     this.createLineAreaEventBK()
-    this.refleshLinePath()
+    this.reflashLinePath()
+    this.fiveLine__reflash()
     this.createYAxisEventBK()
-    this.refleshYAxis()
+    this.reflashYAxis()
     this.createXAxisEventBK()
-    this.refleshXAxis()
-    this.refleshLinePath()
+    this.reflashXAxis()
+    this.reflashLinePath()
     this.INIT__YAxisZoom()
+    this.fiveLine__reflash()
     
-    // fetch("http://34.80.194.11:8080/test")
-    // .then(function (response) {
-    //   return response.json();
-    // })
-    // .then(function (myJson) {
-    //   // This.L_allData = myJson
-
-    //   var height = 800
-    //   var padding = 30
-    //   // var L_time = myJson.map((x) => x.date)
-    //   var Chart = d3.select('#chart')
-    //   This.Svg = Chart.append('svg')
-    //   This.Svg.attr('width', This.total_width).attr('height', This.total_height).attr("id", 'main-svg')
-
-    //   // var DiffDays = Math.abs((new Date(d3.min(L_time))-new Date(d3.max(L_time)))/1000/24/60/60)
-    //   This.xScale = d3.scaleTime()
-    //   .domain([new Date(d3.min(This.L_time)), new Date(d3.max(This.L_time))])  // x軸頭與尾
-    //   .range([-This.totalWidthPiexl+This.total_width, This.total_width]) // x軸頭尾的實際x值
-    //   This.xAxis = d3.axisBottom(This.xScale).ticks(This.DiffDays/This.x_padding) 
-
-    //   This.yScale = d3.scaleLinear()
-    //       .domain([d3.min(myJson.map((x) => x.low)), d3.max(myJson.map((x) => x.high))])
-    //       .range([height-padding*2, 0])
-    //   This.yAxis = d3.axisLeft(This.yScale)
-      
-    //   var bk = This.Svg.append('g').attr("id","event-bk-canvas").style('z-index', '99999')
-    //   bk.append('rect').attr('width', This.total_width-40).attr('height', This.total_height-40).attr('x', 40).attr('y', 10).attr('fill', 'royalblue')
-    //   var bk_x = This.Svg.append('g').attr("id","event-x-bk-canvas").style('z-index', '99999')
-    //   bk_x.append('rect').attr('width', This.total_width).attr('height', 40).attr('x', 0).attr('y', This.total_height-30).attr('fill', 'red')
-
-    //   This.refleshLinePath()
-    //   // var line = This.Svg.append('g').attr("id","line-canvas")
-    //   //   .attr('transform', 'translate('+This.nowX+', '+padding+')')
-
-    //   // line.append('path')
-    //   //   .datum(myJson)
-    //   //   .attr('fill', 'none')
-    //   //   .attr('stroke', 'red')
-    //   //   .attr('stroke-width', 1)
-    //   //   .attr('d', d3.line().x((v, i) => {
-    //   //       return xScale(new Date(v["date"]))
-    //   //   }).y((v, i) => {
-    //   //       return yScale(v["high"])
-    //   //   }))
-
-    //   // line.append('path')
-    //   // .datum(myJson)
-    //   // .attr('fill', 'none')
-    //   // .attr('stroke', 'blue')
-    //   // .attr('stroke-width', 1)
-    //   // .attr('d', d3.line().x((v, i) => {
-    //   //     return xScale(new Date(v["date"]))
-    //   // }).y((v, i) => {
-    //   //     return yScale(v["low"])
-    //   // }))
-
-    //   // line.append('path')
-    //   // .datum(myJson)
-    //   // .attr('fill', 'none')
-    //   // .attr('stroke', 'green')
-    //   // .attr('stroke-width', 1)
-    //   // .attr('d', d3.line().x((v, i) => {
-    //   //     return xScale(new Date(v["date"]))
-    //   // }).y((v, i) => {
-    //   //     return yScale(v["close"])
-    //   // }))
-    
-
-
-    //   This.Svg.append('g').call(This.xAxis).attr("id","axis-x")
-    //       .attr('transform', 'translate('+This.nowX+', '+(height-padding)+')')
-    //       .style('user-select', 'none')
-
-
-    //   This.Svg.append('g').call(This.yAxis).attr("id","axis-y")
-    //       .attr('transform', 'translate('+This.nowX+', '+padding+')')
-    //       .style('user-select', 'none')
-
-      
-      
-    //   document.getElementById("event-x-bk-canvas").addEventListener("wheel", function (e) {
-    //     // console.log(e.deltaY); // logs the className of my_element
-    //     let targetDate = This.getXTimeInSvg(e.clientX, e.clientY) //! 獲得縮放後，滑鼠位置最終的時間錨定點
-    //     This.x_oneDayPixel += e.deltaY/100.
-    //     if (This.x_oneDayPixel < 5) {This.x_oneDayPixel=5}
-    //     This.refleshXAxis()
-    //     //! 重新繪製縮放大小後的x軸後，需要再平移，將縮放錢滑鼠位置與時間錨定點重合
-    //     //1. 找到縮放後，滑鼠縮放點的新時間
-    //     let newDate = This.getXTimeInSvg(e.clientX, e.clientY)
-    //     let shift_1 = map_range(
-    //       newDate.getTime(),
-    //       This.MaxDate.getTime(), This.MinDate.getTime(),
-    //       0, This.totalWidthPiexl
-    //     )
-    //     let shift_2 = map_range(
-    //       targetDate.getTime(),
-    //       This.MaxDate.getTime(), This.MinDate.getTime(),
-    //       0, This.totalWidthPiexl
-    //     )
-    //     // console.log(縮放前)
-    //     This.nowX -= (shift_1-shift_2)
-    //     //2. 求出時間差，將時間差回推成
-
-    //     // document.getElementById("axis-x").remove()
-    //     This.refleshLinePath()
-    //   });
-
-    //   document.getElementById("event-bk-canvas").addEventListener("wheel", function (d) {
-    //     This.nowX += d.deltaY/1
-    //     if (This.nowX<-This.y_axis_width) {This.nowX=-This.y_axis_width}
-    //     if (This.nowX>This.totalWidthPiexl-This.total_width+This.y_axis_width*2) {This.nowX=This.totalWidthPiexl-This.total_width+This.y_axis_width*2}
-    //     document.getElementById("axis-x").setAttribute("transform",'translate('+This.nowX+', '+(height-padding)+')')
-    //     document.getElementById("line-canvas").setAttribute("transform",'translate('+This.nowX+', '+padding+')')
-    //   });
-      
-    //   // Svg.on('wheel', function (d) {
-    //   //   This.nowX += d.deltaY/1
-    //   //   if (This.nowX>40) {This.nowX=40}
-    //   //   if (This.nowX<-totalWidthPiexl-40) {This.nowX=-totalWidthPiexl-40}
-    //   //   document.getElementById("axis-x").setAttribute("transform",'translate('+This.nowX+', '+(height-padding)+')')
-    //   //   document.getElementById("line-canvas").setAttribute("transform",'translate('+This.nowX+', '+padding+')')
-    //   // });
-
-
-    // });
-
-// // 绘制折线
-// var line = svg.append('g')
-//     .attr('transform', 'translate(40, '+padding+')')
-
-// line.append('path')
-//     .datum(dataset)
-//     .attr('fill', 'none')
-//     .attr('stroke', 'blue')
-//     .attr('stroke-width', 1)
-//     .attr('d', d3.line().x((v, i) => {
-//         return xScale(i)
-//     }).y((v, i) => {
-//         return yScale(v)
-//     }))
-
-// // 绘制数据坐标圆点
-// line.selectAll('circle').data(dataset).enter()
-//     .append('circle')
-//     .attr('cx', (v, i) => { return xScale(i)})
-//     .attr('cy', (v, i) => { return yScale(v)})
-//     .attr('r', 5)
-//     .attr('fill', 'gold')
-//     .attr('stroke', 'blue')
-
-//     // 定义鼠标移入事件
-//     .on('mouseover', function (e, v) {
-//         // 放大坐标圆点
-//         d3.select(this).attr('r', 7)
-
-//         // 在光标上方显示坐标值
-//         var pos = d3.pointer(e)
-//         svg.append('text')
-//             .text(v)
-//             .attr('class', 'tooltip')
-//             .attr('x', pos[0]+50)
-//             .attr('y', pos[1]+20)
-//             .attr('text-anchor', 'end')
-//     })
-
-//     // 定义鼠标移出事件
-//     .on('mouseout', function () {
-//         // 还原坐标圆点
-//         d3.select(this).attr('r', 5)
-//         // 移除坐标值提示标签
-//         d3.select('.tooltip').remove()
-//     })
-
   }
 }
 </script>
 <style lang="postcss">
 /* https://github.com/csstools/postcss-plugins/tree/main/plugins/postcss-nesting */
+.unselect {
+  user-select: none; 
+  pointer-events: none;
+}
 </style>
