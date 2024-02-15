@@ -684,16 +684,16 @@ export default {
     // this.y_onePricePixel = (this.total_height-this.x_axis_height)/((this.MaxPrice - this.MinPrice)*1.2)*1.5
 
     // this.nowX1 = this.MinDate.addDays(-10)
-    this.nowX2 = this.MaxDate
-    this.nowX1 = this.MaxDate.addDays(-30)
+    this.nowX2 = new Date(this.MaxDate.format("Y-M-d"))
+    this.nowX1 = new Date(this.MaxDate.format("Y-M-d")).addDays(-60)
 
     // this.nowX2 = new Date(2024,1,5)
     // this.nowX1 = new Date(2023,11,1)
     
     this.nowY1 = this.MinPrice*0.9
     this.nowY2 = this.MaxPrice*1.1
-    // this.nowY1 = 20
-    // this.nowY2 = 21
+    // this.nowY1 = 0
+    // this.nowY2 = this.MaxPrice*1.1
 
     this.INIT__mainSvg()
     // this.createLineAreaEventBK()
