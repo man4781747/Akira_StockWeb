@@ -4,10 +4,12 @@
     <!-- {{ 'width:'+y_axis_width+' px;height:'+(total_height-x_axis_height)+' px;' }} -->
     <div id="total-canvas" style="position: relative;" :style="'width:'+total_width+'px;height:'+total_height+'px;'">
       <div id="y-axis-div" style="position: absolute; top: 0;" :style="'width:'+y_axis_width+'px;height:'+(total_height-x_axis_height)+'px;'"></div>
-      <div id="x-axis-div" style="position: absolute; bottom: 0;" :style="'width:'+total_width+'px;height:'+(x_axis_height)+'px;'"></div>
+      <div id="x-axis-div" style="position: absolute; bottom: 0;" :style="'width:'+total_width+'px;height:'+(x_axis_height)+'px;'"
+        @wheel="(e) => XAxisEvent__ZoomOnX(e.clientX, e.deltaY/100.)"
+      ></div>
       <div id="chart" style="position: absolute; top: 0;overflow: hidden;" :style="'width:'+(total_width-y_axis_width)+'px;height:'+(total_height-x_axis_height)+'px;left: '+y_axis_width+'px'">
         <svg id="main-svg" preserveAspectRatio="none" :width="total_width-y_axis_width" :height="total_height-x_axis_height"
-          :viewBox="MainSvgViewBoxString" @click="showInfo"
+          :viewBox="MainSvgViewBoxString" @click="showInfo" @wheel="(e) => XAxisEvent__ZoomOnX('main-svg', e.clientX, e.deltaY/100.)"
         ></svg>
       </div>
     </div>
@@ -17,6 +19,7 @@
 </template>
 
 <script>
+import { tickStep } from 'd3'
 import Testdata from './test.json'
 export default {
   data () {
@@ -36,6 +39,9 @@ export default {
     nowY1: 0,
     nowY2: 0,
 
+    mainSvgTotalWidth: 0,  //! 主圖的x寬度，在主圖繪製時會定下來，不隨X軸縮放而變化
+    mainSvgTotalHeight: 0,  //! 主圖的x寬度，在主圖繪製時會定下來，不隨X軸縮放而變化
+
     // XAixsShift: 40,
     // YAixsShift: 0,
 
@@ -45,7 +51,7 @@ export default {
     total_width: 1200,
     x_padding: 7, //單位: 天
     // x_oneDayPixel: 10, // 1天占用多少piexl
-    xLableMaxNumOnWindow: 6,
+    xLableMaxNumOnWindow: 12,
     // y_onePricePixel: 1, // 1元占多少Pixel
     x_scale: 1.,
     y_axis_width: 40,
@@ -72,12 +78,16 @@ export default {
       }
       return this.L_allData.map((x) => x.date)
     },
+
+    //! 所有資料的時間跨度
     DiffDays(){
       if (this.L_time === undefined) {
         return 365
       }
       return Math.abs((this.MaxDate - this.MinDate)/1000/24/60/60)
     },
+
+    //! x軸總寬度
     totalWidthPiexl() {
       return this.DiffDays*this.x_oneDayPixel
     },
@@ -100,8 +110,7 @@ export default {
       return Math.floor(this.totalWidthPiexl/oneXLabelPixel)
     },
 
-    //! 
-
+    //! 獲得當前主繪圖的 ViewBox 範圍 [x1, y1, x2, y2]
     XY2ViewBoxValue(){
       return [
         new Date(Math.min(this.nowX1, this.nowX2)),
@@ -111,6 +120,7 @@ export default {
       ]
     },
 
+    //! 獲得當前 ViewBox 的 String格式
     MainSvgViewBoxString(){
       try {
         var Value = this.XY2ViewBoxValue
@@ -128,7 +138,7 @@ export default {
     //! X軸相關參數
     
     XAixsShift(){
-      return this.y_axis_width - this.xScale(this.XY2ViewBoxValue[0])
+      return this.y_axis_width - this.xScale(this.XY2ViewBoxValue[0]) - this.x_oneDayPixel
     },
 
     XAxisValueRange(){
@@ -141,6 +151,8 @@ export default {
     xAxisValueOnWindow(){
 
     },
+
+    //! 一日所佔有的piexl數
     x_oneDayPixel() {
       return (this.total_width-this.y_axis_width)/((this.XY2ViewBoxValue[2]-this.XY2ViewBoxValue[0])/1000/60/60/24)
     },
@@ -223,24 +235,24 @@ export default {
   methods:{
     showInfo(e){
       var pointInfo = this.WindowXY2svgXY(e.target.id, e.clientX, e.clientY)
+      console.log(e.clientX, e.clientY)
+      var DateGet = this.getTimeAndPriceInSvgWithSvgXY(pointInfo["XAxis"]["SVG"],0,true)[0]
+      console.log(DateGet.format("Y-MM-dd hh:mm:ss"))
+
       // console.log(this.YAixsShift-pointInfo["YAxis"]["SVG"])
-
-
-
-
       // console.log(this.total_height, pointInfo["YAxis"]["SVG"], this.YAixsShift, e.clientY)
-      var returnPrice = map_range(
-        this.XY2ViewBoxValue[1]-pointInfo["YAxis"]["SVG"]+this.YAixsShift,
-        0, this.totalHeightPiexl,
-        this.YAxisValueRange[0], this.YAxisValueRange[1]
-      )+this.XY2ViewBoxValue[3]
+      // var returnPrice = map_range(
+      //   this.XY2ViewBoxValue[1]-pointInfo["YAxis"]["SVG"]+this.YAixsShift,
+      //   0, this.totalHeightPiexl,
+      //   this.YAxisValueRange[0], this.YAxisValueRange[1]
+      // )+this.XY2ViewBoxValue[3]
 
-      var returnDate = new Date(map_range(
-        this.total_width-pointInfo["XAxis"]["SVG"]+this.XAixsShift,
-        0, this.totalWidthPiexl,
-        this.MaxDate.getTime(), this.MinDate.getTime()
-      )).addHours(12)
-      console.log(returnPrice, returnDate.format("Y-MM-dd"))
+      // var returnDate = new Date(map_range(
+      //   this.total_width-pointInfo["XAxis"]["SVG"]+this.XAixsShift,
+      //   0, this.totalWidthPiexl,
+      //   this.MaxDate.getTime(), this.MinDate.getTime()
+      // )).addHours(12)
+      // console.log(returnPrice, returnDate.format("Y-MM-dd"))
 
       // console.log(this.xScale(pointInfo["XAxis"]["SVG"]))
 
@@ -250,45 +262,47 @@ export default {
       const svg = document.getElementById(SVGeleID);
       let SVGPoint = svg.createSVGPoint();
       let CTM = svg.getScreenCTM();
-      SVGPoint.x = MouseX;
-      SVGPoint.y = MouseY;
-      let testSVGPoint = SVGPoint.matrixTransform(CTM);
+      // SVGPoint.x = MouseX;
+      // SVGPoint.y = MouseY;
+      let testSVGPoint = SVGPoint.matrixTransform(CTM)
+      testSVGPoint.x = MouseX;
+      testSVGPoint.y = MouseY;
+      SVGPoint = testSVGPoint.matrixTransform(CTM.inverse());
+      // console.log("目標svg:", SVGeleID)
+      // console.log("滑鼠在視窗中的位置:", MouseX, MouseY);
+      // console.log("滑鼠在SVG中的位置:", SVGPoint.x, SVGPoint.y);
+
       // console.log(MouseX, MouseY)
       // console.log(testSVGPoint)
       var returnValue = {
         "XAxis": {
-          "SVG": testSVGPoint.x,
+          "SVG": SVGPoint.x,
           "Window": MouseX
         },
         "YAxis": {
-          "SVG": testSVGPoint.y,
+          "SVG": SVGPoint.y,
           "Window": MouseY
         }
       }
       // console.log(returnValue)
       return returnValue
     },
-    getXTimeInSvg(xPointOnWindow, yPointOnWindow) {
-      const svg = document.getElementById('main-svg');
-      let SVGPoint = svg.createSVGPoint();
-      let CTM = svg.getScreenCTM();
-      SVGPoint.x = xPointOnWindow;
-      SVGPoint.y = yPointOnWindow;
-      // clientPoint = SVGPoint.matrixTransform(CTM);
-      let testSVGPoint = SVGPoint.matrixTransform(CTM);
-      // console.log("滑鼠在SVG中的位置:", testSVGPoint.x, testSVGPoint.y);
-      // console.log("當前圖像x軸平移量: ", this.XAixsShift)
-      // console.log("x軸整體有效長度為(最右端為0，向左增加): ", this.totalWidthPiexl)
-      // console.log("最左端時間為: ", this.MinDate)
-      // console.log("最右端時間為: ", this.MaxDate)
-      // console.log("圖像視窗寬度為: ", this.total_width)
-      // console.log("所以當前點擊的位置在x軸整體有效的: ", this.total_width-testSVGPoint.x+this.XAixsShift)
-      var returnDate = new Date(map_range(
+    getTimeAndPriceInSvgWithSvgXY(xPointOnSvg, yPointOnSvg, IsMainSvg=false) {
+      var returnDate
+      if (IsMainSvg) {
+        returnDate = [new Date(map_range(
+          xPointOnSvg,
+          0, this.mainSvgTotalWidth,
+          this.MinDate.getTime(), this.MaxDate.getTime()
+        )), 0]
+      }
+      else {
+        returnDate = [new Date(map_range(
           this.total_width-testSVGPoint.x+this.XAixsShift,
           0, this.totalWidthPiexl,
           this.MaxDate.getTime(), this.MinDate.getTime()
-        ))
-      // console.log(returnDate)
+        )), 0]
+      }
       return returnDate
     },
     getXYValueInSvg(xPointOnWindow, yPointOnWindow) {
@@ -338,6 +352,7 @@ export default {
         ),
       ]
     },
+
     createYAxisEventBK(){
       var bk_y = this.Svg.append('g').attr("id","event-y-bk-canvas").style('z-index', '99999')
       bk_y.append('rect').attr('width', this.y_axis_width).attr('height', this.total_height-this.x_axis_height).attr('x', 0).attr('y', 0).attr('fill', '#F5F5F5')
@@ -376,82 +391,106 @@ export default {
       document.getElementById("event-x-bk-canvas").addEventListener("mouseleave", (e)=> {DragEle = null})
     },
 
-    createLineAreaEventBK(){
-      var bk_line = this.Svg.append('g').attr("id","event-line-bk-canvas")
-      bk_line.append('rect').attr('width', this.total_width-this.y_axis_width)
-        .attr('height', this.total_height-this.x_axis_height).attr('y', 0).attr('fill', 'rgba(0,0,0,0.1')
-      var DragEle = null
-      var LastPosition_X;
-      var LastPosition_Y;
-      var This = this
+    // createLineAreaEventBK(){
+    //   var bk_line = this.Svg.append('g').attr("id","event-line-bk-canvas")
+    //   bk_line.append('rect').attr('width', this.total_width-this.y_axis_width)
+    //     .attr('height', this.total_height-this.x_axis_height).attr('y', 0).attr('fill', 'rgba(0,0,0,0.1')
+    //   var DragEle = null
+    //   var LastPosition_X;
+    //   var LastPosition_Y;
+    //   var This = this
 
-      var date_bk_area = this.Svg.append('g')
-      date_bk_area.append('rect').attr("id","date-bk-area")
-        .attr('width', this.x_oneDayPixel).attr('height', this.total_height-this.x_axis_height).attr('x', this.y_axis_width).attr('y', 0).attr('fill', 'rgba(0,0,0,0.1')
-        .attr("class","unselect")
-        // .style("display","none")
-      var date_bk_area_ele = document.getElementById("date-bk-area")
-      document.getElementById("event-line-bk-canvas").addEventListener("wheel", (e)=>this.XAxisEvent__ZoomOnX(e.clientX, e.deltaY/100.))
-      document.getElementById("event-line-bk-canvas").addEventListener("mousedown", (e)=> {
-        DragEle = e.target
-        LastPosition_X=e.clientX;LastPosition_Y=e.clientY
-        date_bk_area.style("display", "none")
-      })
-      document.getElementById("event-line-bk-canvas").addEventListener("mousemove", (e)=> {
-        if (DragEle) {
-          This.XAxisEvent__HorizontalDisplacement(e.clientX-LastPosition_X);LastPosition_X=e.clientX
-          This.YAxisEvent__VerticalDisplacement(-e.clientY+LastPosition_Y);LastPosition_Y=e.clientY
-        }
-        // let selectDate_AfterShift = This.getXYValueInSvg(e.clientX, e.clientY)[0].addHours(12)
-        // var targetID = "mb-"+selectDate_AfterShift.format("Y-MM-dd")
-        // if (This.lastTargetMoneyBarID !== targetID) {
-        //   let lastRargetEle = document.getElementById(This.lastTargetMoneyBarID)
-        //   if (lastRargetEle) {
-        //     lastRargetEle.setAttribute("stroke-width",  This.x_oneDayPixel*0.5)
-        //   }
-        //   let targetEle = document.getElementById(targetID)
-        //   if (targetEle) {
-        //     targetEle.setAttribute("stroke-width",  This.x_oneDayPixel*0.7)
-        //     window.tt =targetEle
-        //     This.chosedData = This.L_allData[parseInt(targetEle.getAttribute("data-index"))]
+    //   var date_bk_area = this.Svg.append('g')
+    //   date_bk_area.append('rect').attr("id","date-bk-area")
+    //     .attr('width', this.x_oneDayPixel).attr('height', this.total_height-this.x_axis_height).attr('x', this.y_axis_width).attr('y', 0).attr('fill', 'rgba(0,0,0,0.1')
+    //     .attr("class","unselect")
+    //     // .style("display","none")
+    //   var date_bk_area_ele = document.getElementById("date-bk-area")
+    //   document.getElementById("event-line-bk-canvas").addEventListener("wheel", (e)=>this.XAxisEvent__ZoomOnX(e.clientX, e.deltaY/100.))
+    //   document.getElementById("event-line-bk-canvas").addEventListener("mousedown", (e)=> {
+    //     DragEle = e.target
+    //     LastPosition_X=e.clientX;LastPosition_Y=e.clientY
+    //     date_bk_area.style("display", "none")
+    //   })
+    //   document.getElementById("event-line-bk-canvas").addEventListener("mousemove", (e)=> {
+    //     if (DragEle) {
+    //       This.XAxisEvent__HorizontalDisplacement(e.clientX-LastPosition_X);LastPosition_X=e.clientX
+    //       This.YAxisEvent__VerticalDisplacement(-e.clientY+LastPosition_Y);LastPosition_Y=e.clientY
+    //     }
+    //     // let selectDate_AfterShift = This.getXYValueInSvg(e.clientX, e.clientY)[0].addHours(12)
+    //     // var targetID = "mb-"+selectDate_AfterShift.format("Y-MM-dd")
+    //     // if (This.lastTargetMoneyBarID !== targetID) {
+    //     //   let lastRargetEle = document.getElementById(This.lastTargetMoneyBarID)
+    //     //   if (lastRargetEle) {
+    //     //     lastRargetEle.setAttribute("stroke-width",  This.x_oneDayPixel*0.5)
+    //     //   }
+    //     //   let targetEle = document.getElementById(targetID)
+    //     //   if (targetEle) {
+    //     //     targetEle.setAttribute("stroke-width",  This.x_oneDayPixel*0.7)
+    //     //     window.tt =targetEle
+    //     //     This.chosedData = This.L_allData[parseInt(targetEle.getAttribute("data-index"))]
             
 
-        //   }
-        //   This.lastTargetMoneyBarID = targetID
-        //   date_bk_area_ele.setAttribute("x",  e.clientX)
-        // }
-      })
-      document.getElementById("event-line-bk-canvas").addEventListener("mouseup", (e)=> {
-        DragEle = null
-        date_bk_area.style("display", "unset")
-      })
-      document.getElementById("event-line-bk-canvas").addEventListener("mouseleave", (e)=> {
-        DragEle = null
-        date_bk_area.style("display", "unset")
-      })
-      // this.Svg.append('g').attr("id","line-canvas")
-        // .attr('transform', 'translate('+this.XAixsShift+', '+this.x_axis_height+')')
-    },
+    //     //   }
+    //     //   This.lastTargetMoneyBarID = targetID
+    //     //   date_bk_area_ele.setAttribute("x",  e.clientX)
+    //     // }
+    //   })
+    //   document.getElementById("event-line-bk-canvas").addEventListener("mouseup", (e)=> {
+    //     DragEle = null
+    //     date_bk_area.style("display", "unset")
+    //   })
+    //   document.getElementById("event-line-bk-canvas").addEventListener("mouseleave", (e)=> {
+    //     DragEle = null
+    //     date_bk_area.style("display", "unset")
+    //   })
+    //   // this.Svg.append('g').attr("id","line-canvas")
+    //     // .attr('transform', 'translate('+this.XAixsShift+', '+this.x_axis_height+')')
+    // },
 
-    XAxisEvent__ZoomOnX(xPosition, dZoom){
-      let BeforeDate = this.getXTimeInSvg(xPosition, 0) //! 獲得縮放前，滑鼠位置的時間錨定點
-      this.x_oneDayPixel += dZoom
-      if (this.x_oneDayPixel < 1) {this.x_oneDayPixel=1}
-      this.reflashXAxis()
-      let AfterDate = this.getXTimeInSvg(xPosition, 0) //! 獲得縮放前，滑鼠位置的時間錨定點
-      let shift_1 = map_range(
-        BeforeDate.getTime(),
-        this.MaxDate.getTime(), this.MinDate.getTime(),
-        0, this.totalWidthPiexl
-      )
-      let shift_2 = map_range(
-        AfterDate.getTime(),
-        this.MaxDate.getTime(), this.MinDate.getTime(),
-        0, this.totalWidthPiexl
-      )
-      this.reflashLinePath()
-      this.fiveLine__reflash()
-      this.XAxisEvent__HorizontalDisplacement(shift_1-shift_2)
+    XAxisEvent__ZoomOnX(SVGeleID, xPosition, dZoom){
+      let BeforePosition = this.WindowXY2svgXY(SVGeleID, xPosition, 0) //! 獲得縮放前，滑鼠位置的時間錨定點
+      let BeforeDate = this.getTimeAndPriceInSvgWithSvgXY(BeforePosition["XAxis"]["SVG"],0,true)[0]
+      
+      let BeforeValue = ((xPosition-this.y_axis_width)/(this.total_width-this.y_axis_width)) * (this.nowX2.getTime()-this.nowX1.getTime()) + this.nowX1.getTime()
+
+
+      this.nowX1 = (new Date(this.nowX1)).addDays(dZoom)
+      if (this.nowX1<this.MinDate) { this.nowX1 = new Date(this.MinDate) }
+      this.nowX2 = (new Date(this.nowX2)).addDays(dZoom*-1)
+      if (this.nowX2>this.MaxDate) { this.nowX2 = new Date(this.MaxDate) }
+
+
+      let AfterValue = ((xPosition-this.y_axis_width)/(this.total_width-this.y_axis_width)) * (this.nowX2.getTime()-this.nowX1.getTime()) + this.nowX1.getTime()
+
+      // console.log((BeforeValue-AfterValue)/1000)
+      let dSeconds = (BeforeValue-AfterValue)/1000
+      this.nowX1 = (new Date(this.nowX1)).addSeconds(dSeconds)
+      this.nowX2 = (new Date(this.nowX2)).addSeconds(dSeconds)
+      if (this.nowX1<this.MinDate) { this.nowX1 = new Date(this.MinDate) }
+      if (this.nowX2>this.MaxDate) { this.nowX2 = new Date(this.MaxDate) }
+      // this.reflashXAxis()
+      // let AfterPosition = this.WindowXY2svgXY(SVGeleID, xPosition, 0) //! 獲得縮放前，滑鼠位置的時間錨定點
+      // let AfterDate = this.getTimeAndPriceInSvgWithSvgXY(AfterPosition["XAxis"]["SVG"],0,true)[0]
+      // let dSeconds = (BeforeDate-AfterDate)/1000
+      // this.nowX1 = (new Date(this.nowX1)).addSeconds(dSeconds)
+      // this.nowX2 = (new Date(this.nowX2)).addSeconds(dSeconds)
+      // if (this.nowX1<this.MinDate) { this.nowX1 = new Date(this.MinDate) }
+      // if (this.nowX2>this.MaxDate) { this.nowX2 = new Date(this.MaxDate) }
+
+      // this.$nextTick( () => {
+      //   let AfterPosition = this.WindowXY2svgXY(SVGeleID, xPosition, 0) //! 獲得縮放前，滑鼠位置的時間錨定點
+      //   let AfterDate = this.getTimeAndPriceInSvgWithSvgXY(AfterPosition["XAxis"]["SVG"],0,true)[0]
+      //   let dSeconds = (BeforeDate-AfterDate)/1000
+      //   console.log(dSeconds)
+      //   this.nowX1 = (new Date(this.nowX1)).addSeconds(dSeconds)
+      //   this.nowX2 = (new Date(this.nowX2)).addSeconds(dSeconds)
+      //   if (this.nowX1<this.MinDate) { this.nowX1 = new Date(this.MinDate) }
+      //   if (this.nowX2>this.MaxDate) { this.nowX2 = new Date(this.MaxDate) }
+      //   this.$nextTick( () => {
+      //     // this.reflashXAxis()
+      //   })
+      // })
     },
     XAxisEvent__HorizontalDisplacement(dX){
       this.XAixsShift += dX
@@ -492,17 +531,17 @@ export default {
       .domain(this.XAxisValueRange)  // x軸頭與尾
       .range([0, this.totalWidthPiexl]) // x軸頭尾的實際x值
       this.xAxis = d3.axisBottom(this.xScale)
-      .ticks(this.XAxisLabelNum) 
+      .ticks(this.XAxisLabelNum).tickFormat(d3.utcFormat("%-m/%-d"))
+
       if (document.getElementById("x-axis-svg")) {
-        for (let child of document.getElementById("x-axis-svg").childNodes) {
-          child.remove()
-        }
+        // for (let child of document.getElementById("x-axis-svg").childNodes) {
+        //   child.remove()
+        // }
       } else {
         this.svg_xAxis = d3.select('#x-axis-div').append('svg')
-        this.svg_xAxis.attr('width', this.total_width).attr('height', this.x_axis_height).attr("id", 'x-axis-svg')
+        this.svg_xAxis.attr('width', this.total_width).attr('height', this.x_axis_height).attr("id", 'x-axis-svg').append('g')
       }
-      this.svg_xAxis.append('g').call(this.xAxis).attr('transform', 'translate('+(this.XAixsShift-1)+', 1)').attr("id", 'x-axis-g')
-
+      this.svg_xAxis.select('g').call(this.xAxis).attr('transform', 'translate('+(this.XAixsShift-1)+', 2)').attr("id", 'x-axis-g')
     },
     //? 重繪整個Y軸座標
     reflashYAxis(){
@@ -531,10 +570,10 @@ export default {
       else {
         this.Svg.append('g').attr("id","line-canvas")
       }
-      // this.Svg.select("#line-canvas").attr('transform', 'translate('+this.XAixsShift+', '+this.x_axis_height+')')
 
-      // var targetCanvas = this.Svg.select("#line-canvas")
-      // console.log(this.L_allData)
+      this.mainSvgTotalWidth = Math.abs(this.xScale(this.XAxisValueRange[1]) - this.xScale(this.XAxisValueRange[0]))
+      this.mainSvgTotalHeight = Math.abs(this.yScale(this.YAxisValueRange[1]) - this.yScale(this.YAxisValueRange[0]))
+
       const g = this.Svg.select("#line-canvas").append("g")
         .attr("stroke-linecap", "round")
         .attr("stroke", "black")
@@ -542,44 +581,59 @@ export default {
         .data(this.L_allData)
         .join("g")
 
-      g.append("line")
-        .attr("y1", d => this.yScale(d.low))
-        .attr("y2", d => this.yScale(d.high))
-        .attr("x1", d => this.xScale(new Date(d.date)))
-        .attr("x2", d => this.xScale(new Date(d.date)))
-        .attr("class","unselect")
+      // g.append("line")
+      //   .attr("y1", d => this.yScale(d.low))
+      //   .attr("y2", d => this.yScale(d.high))
+      //   .attr("x1", d => this.xScale(new Date(d.date)))
+      //   .attr("x2", d => this.xScale(new Date(d.date)))
+      //   .attr("class","unselect")
 
       // g.append("line")
-      //   .attr("y1", this.yScale( this.fiveLine__dataList[0]["close"]))
-      //   .attr("x1", this.xScale( new Date(this.fiveLine__dataList[0]["date"]) ))
-      //   .attr("y2", this.yScale( this.fiveLine__dataList[this.fiveLine__dataList.length-1]["close"]))
-      //   .attr("x2", this.xScale( new Date(this.fiveLine__dataList[this.fiveLine__dataList.length-1]["date"]) ))
+      //   .attr("id", d => ("mb-"+d.date).split(" ")[0])
+      //   .attr("data-index", d => d.index)
+      //   .attr("date", d => d.date)
+      //   .attr("y1", d => this.yScale(d.open))
+      //   .attr("y2", d => this.yScale(d.close))
+      //   .attr("x1", d => this.xScale(new Date(d.date)))
+      //   .attr("x2", d => this.xScale(new Date(d.date)))
+      //   .attr("stroke-width", this.x_oneDayPixel*0.5)
+      //   .attr("stroke", d => d.open > d.close ? d3.schemeSet1[0]
+      //     : d.close > d.open ? d3.schemeSet1[2]
+      //     : d3.schemeSet1[8])
+      //   .attr("class","unselect")
 
-      // for (let dataChose of this.L_allData) {
-      //   g.append("line")
-      //     .attr("y1", this.yScale(dataChose.open))
-      //     .attr("y2", this.yScale(dataChose.close))
-      //     .attr("x1", this.xScale(new Date(dataChose.date)))
-      //     .attr("x2", this.xScale(new Date(dataChose.date)))
-      //     .attr("stroke-width", this.x_oneDayPixel*0.5)
-      //     // .attr("stroke", dataChose.open > dataChose.close ? d3.schemeSet1[0]
-      //     //   : dataChose.close > dataChose.open ? d3.schemeSet1[2]
-      //     //   : d3.schemeSet1[8]);
-      // }
-
-      g.append("line")
+      g.append("circle")
         .attr("id", d => ("mb-"+d.date).split(" ")[0])
         .attr("data-index", d => d.index)
         .attr("date", d => d.date)
-        .attr("y1", d => this.yScale(d.open))
-        .attr("y2", d => this.yScale(d.close))
-        .attr("x1", d => this.xScale(new Date(d.date)))
-        .attr("x2", d => this.xScale(new Date(d.date)))
-        .attr("stroke-width", this.x_oneDayPixel*0.5)
-        .attr("stroke", d => d.open > d.close ? d3.schemeSet1[0]
-          : d.close > d.open ? d3.schemeSet1[2]
-          : d3.schemeSet1[8])
+        .attr("cy", d => this.yScale(d.open))
+        .attr("cx", d => this.xScale(new Date(d.date)))
+        .attr("r", 2)
         .attr("class","unselect")
+
+      g.append("text")
+      .attr("x", d => this.xScale(new Date(d.date)))
+      .attr("dy", d => this.yScale(d.open)-10).attr("fill", 'red')
+      .style("fill", 'red').style("font-size", '10px').style("text-anchor", 'middle')
+      .text(d => new Date(d.date).format("Y/MM/dd"));
+
+      g.append("text")
+      .attr("x", d => this.xScale(new Date(d.date)))
+      .attr("dy", d => this.yScale(d.open)-25).attr("fill", 'red')
+      .style("fill", 'red').style("font-size", '10px').style("text-anchor", 'middle')
+      .text(d =>  d.open);
+
+      g.append("text")
+        .attr("x", d => this.xScale(new Date(d.date)))
+        .attr("dy", d => this.yScale(d.open)-37.5).attr("fill", 'red')
+        .style("fill", 'red').style("font-size", '10px').style("text-anchor", 'middle')
+        .text( d => "(" + this.xScale(new Date(d.date)).toFixed() + "," + (this.yScale(d.open)).toFixed()+")");
+
+      // .append('textPath')
+      // .text(d => new Date(d.date).format("Y-MM-dd"));
+      // .attr({
+      //   'xlink:href': '#mypath'
+      // }).text('男丁格爾\'s 脫殼玩 http://abgne.tw');
       // var This = this
       // d3.selectAll('.money-bar').on('mouseover', function () {
       //   let pt = d3.pointer(event, This.Svg.node())
@@ -666,7 +720,7 @@ export default {
           .attr("class","unselect")
           .attr("stroke",d => d.color)
           .attr("stroke-width", 3)
-
+        
 
       } else {
         this.Svg.append('g').attr("id","five-line")
@@ -675,6 +729,7 @@ export default {
   },
   mounted(){
     window.test = this
+    
     var This = this
     this.L_allData = Testdata
     for (let dataChose in this.L_allData) {
@@ -684,8 +739,12 @@ export default {
     // this.y_onePricePixel = (this.total_height-this.x_axis_height)/((this.MaxPrice - this.MinPrice)*1.2)*1.5
 
     // this.nowX1 = this.MinDate.addDays(-10)
-    this.nowX2 = new Date(this.MaxDate.format("Y-M-d"))
-    this.nowX1 = new Date(this.MaxDate.format("Y-M-d")).addDays(-60)
+    // this.nowX2 = new Date(this.MaxDate.format("Y-M-d"))
+    // this.nowX1 = new Date(this.MaxDate.format("Y-M-d")).addDays(-30)
+
+
+    this.nowX2 = new Date(this.MinDate.format("Y-M-d")).addDays(20)
+    this.nowX1 = new Date(this.MinDate.format("Y-M-d")).addDays(10)
 
     // this.nowX2 = new Date(2024,1,5)
     // this.nowX1 = new Date(2023,11,1)
@@ -704,7 +763,7 @@ export default {
     // this.createXAxisEventBK()
     this.reflashXAxis()
     this.reflashLinePath()
-    this.INIT__YAxisZoom()
+    // this.INIT__YAxisZoom()
     // this.fiveLine__reflash()
     
   }
